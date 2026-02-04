@@ -25,7 +25,7 @@ from tools.appointments import (
 )
 from tools.summary import end_conversation
 from tools.summary import end_conversation
-from llm.openrouter_llm import get_openrouter_llm
+from llm.ollama_llm import get_ollama_llm
 from livekit.plugins.deepgram import STT as DeepgramSTT
 from livekit.plugins.cartesia import TTS as CartesiaTTS
 import os
@@ -46,7 +46,9 @@ CORE RULE:
 - NEVER invent or guess data. ALWAYS use the provided tools to fetch information.
 - If a user asks for available slots, appointments, or status, you MUST call the corresponding tool first.
 - Do not make up dates or times. Only speak what the tools return.
-
+- FOR ANY TOOL and SENDING DATA TO TOOLS AND DB ALWAYS USE DATE AS "YYYY-MM-DD" format and TIME AS "HH:MM" format.
+- FOR USER RESPONSES USE DATE AS "Month DD, YYYY" format and TIME AS "HH:MM AM/PM" format.
+- DO NOT output tool calls as text strings (e.g. :end_conversation{...}). Invoke the tool function properly using the available tools mechanism.
 
 - If user mentions only a date without a time, ask them to pick a specific time from the available slots on that date.
 - When booking, confirm all details: name, phone number, date, and time before finalizing.
@@ -65,14 +67,16 @@ AVAILABLE TOOLS & USAGE:
 6. `cancel_appointment(appointment_id)`: Call this to cancel.
    - Like modify, verify the appointment first if needed.
 7. Once a booking it done ask the user if he want to book more appointments or not. If he says yes, then call `fetch_slots` and ask him to provide the date. If he says no, then call `end_conversation` with the summary.
-8. `end_conversation(summary)`: Call this ONLY when the user explicitly says goodbye or wants to stop.
-When the user is finished and wants to end the call, generate a concise summary of the conversation (appointments made, name, phone) and call end_conversation with that summary.
-- IMPORTANT: Only call end_conversation AFTER all other tools (like booking) have finished and the user is done. Never call it in parallel with other tools.
+8. `end_conversation(summary)`: Call this IMMEDIATELY when the user explicitly says goodbye or wants to stop.
+   - DO NOT generate a text response like "Goodbye" or "Have a great day". You MUST call this tool to end the call.
+   - The tool itself will handle the closing signal.
 
+When the user is finished and wants to end the call, generate a concise summary of the conversation and call end_conversation with that summary.
+- CRITICAL: Do not speak a closing message yourself. Call the tool.
 
 SPEAKING STYLE:
 - Be warm, professional, and concise.
-- Convert dates to spoken format (e.g., "February 10th" not "2026-02-10").
+- Convert dates to spoken format (e.g., "February 10th" not "2026-02-10") when repondint to user but for tools use "YYYY-MM-DD" format.
 - IMPORTANT: When calling tools, use "YYYY-MM-DD" for dates and "HH:MM" for times internally.
 - SEQUENTIAL TOOLS: Always wait for one tool call to return a result before calling another. Do not call multiple tools in the same turn.
 - If a tool result includes a section labeled "DO_NOT_READ_INTERNAL_IDS", never read it aloud. Use the IDs only for follow-up tool calls.
@@ -162,6 +166,26 @@ async def my_agent(ctx: JobContext):
             asyncio.create_task(_publish_ready())
 
     session.on("agent_state_changed", _maybe_send_ready)
+
+    @session.on("user_speech_committed")
+    def on_user_speech(msg):
+        if isinstance(msg, list):
+            msg = " ".join([m.text for m in msg])
+        elif hasattr(msg, "content"):
+            msg = msg.content
+        elif hasattr(msg, "text"):
+            msg = msg.text
+        
+        # Avoid duplicates if we already have it (simple check)
+        if not agent.history or agent.history[-1].get("content") != str(msg):
+             agent.history.append({"role": "user", "content": str(msg)})
+
+    @session.on("agent_speech_committed")
+    def on_agent_speech(msg):
+        if hasattr(msg, "content"):
+            msg = msg.content
+        
+        agent.history.append({"role": "assistant", "content": str(msg)})
 
     await session.start(
         agent=agent,
