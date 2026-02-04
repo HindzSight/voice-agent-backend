@@ -1,6 +1,5 @@
 import logging
 from dotenv import load_dotenv
-from livekit import rtc
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -8,10 +7,8 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     cli,
-    inference,
-    room_io,
 )
-from livekit.plugins import  silero
+from livekit.plugins import silero
 
 from config import DEEPGRAM_API_KEY, CARTESIA_API_KEY
 from tools.appointments import (
@@ -23,7 +20,9 @@ from tools.appointments import (
     modify_appointment,
 )
 from tools.summary import end_conversation
-from llm.openrouter_llm import OpenRouterLLM
+from llm.openrouter_llm import get_openrouter_llm
+from livekit.plugins.deepgram import STT as DeepgramSTT
+from livekit.plugins.cartesia import TTS as CartesiaTTS
 
 load_dotenv(".env")
 logger = logging.getLogger("agent")
@@ -78,14 +77,14 @@ async def my_agent(ctx: JobContext):
         logger.error("API keys for Deepgram or Cartesia are missing.")
         return
     session = AgentSession(
-        stt=inference.STT(
-            model="deepgram/nova-3",
+        stt=DeepgramSTT(
+            model="nova-3",
             api_key=DEEPGRAM_API_KEY,
             language="en",
         ),
-        llm=OpenRouterLLM(),
-        tts=inference.TTS(
-            model="cartesia/sonic-3",
+        llm=get_openrouter_llm(),
+        tts=CartesiaTTS(
+            model="sonic-3",
             api_key=CARTESIA_API_KEY,
         ),
         vad=ctx.proc.userdata["vad"],
@@ -95,10 +94,7 @@ async def my_agent(ctx: JobContext):
     await session.start(
         agent=Assistant(),
         room=ctx.room,
-        room_options=room_io.RoomOptions(),
     )
-
-    await ctx.connect()
 
 
 if __name__ == "__main__":
