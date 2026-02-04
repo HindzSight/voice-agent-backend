@@ -1,0 +1,18 @@
+[project]
+name = "voice-agent-backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "deepgram-sdk>=5.3.2",
+    "livekit>=1.0.23",
+    "livekit-agents>=1.3.12",
+    "livekit-plugins-cartesia>=1.3.12",
+    "livekit-plugins-deepgram>=1.3.12",
+    "livekit-plugins-silero>=1.3.12",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
+    "supabase>=2.27.3",
+]
