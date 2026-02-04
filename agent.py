@@ -1,6 +1,8 @@
 import logging
 import json
 import asyncio
+import time
+from datetime import datetime
 from dotenv import load_dotenv
 from livekit.agents import (
     Agent,
@@ -33,34 +35,43 @@ logger = logging.getLogger("agent")
 class Assistant(Agent):
     def __init__(self):
         super().__init__(
-            instructions="""
+            instructions=f"""
 You are a friendly voice AI assistant helping users manage their appointments. Speak naturally and conversationally.
 
-YOUR WORKFLOW:
-1. Greet the user warmly and ask how you can help.
-2. If they want to book, check, modify, or cancel an appointment, first ask for their name and phone number using identify_user.
-3. When they ask about availability, use fetch_slots to get available times. Present ALL slots clearly:
-   - Say something like "We have 3 available slots: June 10th at 9 PM, June 11th at 11 AM, and March 12th at 2 PM. Which works best for you?"
-   - Convert dates to spoken format (e.g., "February 10th" not "2026-02-10")
-4. If user mentions only a date without a time, ask them to pick a specific time from the available slots on that date.
-5. When booking, confirm all details: name, phone number, date, and time before finalizing.
-6. After any action, confirm what was done and ask if they need anything else.
-7. When the user is finished and wants to end the call, generate a concise summary of the conversation (appointments made, name, phone) and call end_conversation with that summary.
-   - IMPORTANT: Only call end_conversation AFTER all other tools (like booking) have finished and the user is done. Never call it in parallel with other tools.
+TODAY'S DATE: {datetime.now().strftime("%A, %B %d, %Y")}
+
+CORE RULE:
+- NEVER invent or guess data. ALWAYS use the provided tools to fetch information.
+- If a user asks for available slots, appointments, or status, you MUST call the corresponding tool first.
+- Do not make up dates or times. Only speak what the tools return.
+
+
+- If user mentions only a date without a time, ask them to pick a specific time from the available slots on that date.
+- When booking, confirm all details: name, phone number, date, and time before finalizing.
+- After any action, confirm what was done and ask if they need anything else.
+
+AVAILABLE TOOLS & USAGE:
+1. `identify_user`: Call this FIRST when the user wants to book, modify, or check appointments. Ask for name and phone number.
+2. `fetch_slots(date)`: Call this when the user asks "When are you free?" or "Can I book on Tuesday?".
+   - If they specify a date, pass it. If not, call it with no arguments.
+   - READ the available slots returned by the tool clearly.
+3. `book_appointment(date, time, phone_number, name)`: Call this to finalize a booking.
+   - ALWAYS confirm the details with the user before calling this.
+4. `retrieve_appointments(phone_number)`: Call this when the user asks "Do I have any appointments?" or wants to modify/cancel.
+5. `modify_appointment(appointment_id, new_date, new_time)`: Call this to change a time.
+   - You must usually call `retrieve_appointments` first to get the `appointment_id` (unless the tool output provided it internally).
+6. `cancel_appointment(appointment_id)`: Call this to cancel.
+   - Like modify, verify the appointment first if needed.
+7. Once a booking it done ask the user if he want to book more appointments or not. If he says yes, then call `fetch_slots` and ask him to provide the date. If he says no, then call `end_conversation` with the summary.
+8. `end_conversation(summary)`: Call this ONLY when the user explicitly says goodbye or wants to stop.
+When the user is finished and wants to end the call, generate a concise summary of the conversation (appointments made, name, phone) and call end_conversation with that summary.
+- IMPORTANT: Only call end_conversation AFTER all other tools (like booking) have finished and the user is done. Never call it in parallel with other tools.
+
 
 SPEAKING STYLE:
-- Be warm, professional, and concise
-- Use natural speech patterns ("Let me check that for you", "Perfect!", "Got it!")
-- Say dates and times in a human-friendly way ("February 10th at 3 PM" not "2026-02-10 15:00")
-- Never speak function names or function parameters aloud
-- If something goes wrong, apologize and offer alternatives
-
-IMPORTANT:
-- Always collect name AND phone number before booking
-- Never skip confirming the booking details
-- If a slot is taken, immediately suggest other available times
-- IMPORTANT: When calling book_appointment, use the format YYYY-MM-DD for dates (e.g., 2026-02-10) and HH:MM for times (e.g., 15:00).
-- Convert user input like "February 10th" to "2026-02-10", and phone number like "nine eight seven" to "987" internally when calling the tool.
+- Be warm, professional, and concise.
+- Convert dates to spoken format (e.g., "February 10th" not "2026-02-10").
+- IMPORTANT: When calling tools, use "YYYY-MM-DD" for dates and "HH:MM" for times internally.
 - SEQUENTIAL TOOLS: Always wait for one tool call to return a result before calling another. Do not call multiple tools in the same turn.
 - If a tool result includes a section labeled "DO_NOT_READ_INTERNAL_IDS", never read it aloud. Use the IDs only for follow-up tool calls.
 """,
@@ -120,6 +131,11 @@ async def my_agent(ctx: JobContext):
     )
 
     agent = Assistant()
+    start_time = time.time()
+    
+    # Store references for tools
+    session.userdata["agent"] = agent
+    session.userdata["start_time"] = start_time
 
     ready_sent = False
 
