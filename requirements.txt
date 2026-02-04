@@ -1,0 +1,12 @@
+deepgram-sdk
+livekit
+livekit-agents
+livekit-plugins-cartesia
+livekit-plugins-deepgram
+livekit-plugins-bey
+livekit-plugins-openai
+livekit-plugins-silero
+pydantic
+python-dotenv
+requests
+supabase

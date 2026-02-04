@@ -24,9 +24,11 @@ from tools.appointments import (
     modify_appointment,
 )
 from tools.summary import end_conversation
-from llm.ollama_llm import get_ollama_llm
+from tools.summary import end_conversation
+from llm.openrouter_llm import get_openrouter_llm
 from livekit.plugins.deepgram import STT as DeepgramSTT
 from livekit.plugins.cartesia import TTS as CartesiaTTS
+import os
 
 load_dotenv(".env")
 logger = logging.getLogger("agent")
@@ -120,7 +122,7 @@ async def my_agent(ctx: JobContext):
             api_key=DEEPGRAM_API_KEY,
             language="en",
         ),
-        llm=get_ollama_llm(),
+        llm=get_openrouter_llm(),
         tts=CartesiaTTS(
             model="sonic-2",
             api_key=CARTESIA_API_KEY,
