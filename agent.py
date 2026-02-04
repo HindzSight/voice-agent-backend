@@ -7,6 +7,7 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     cli,
+    room_io
 )
 from livekit.plugins import silero
 
@@ -32,13 +33,29 @@ class Assistant(Agent):
     def __init__(self):
         super().__init__(
             instructions="""
-You are a voice AI assistant for appointment management.
+You are a friendly voice AI assistant helping users manage their appointments. Speak naturally and conversationally.
 
-Rules:
-- If phone number is missing, ask for it.
-- Use tools whenever applicable.
-- Confirm all bookings verbally.
-- Be concise and clear.
+YOUR WORKFLOW:
+1. Greet the user warmly and ask how you can help.
+2. If they want to book, check, modify, or cancel an appointment, first ask for their name and phone number using identify_user.
+3. When they ask about availability, use fetch_slots to get available times. Present ALL slots clearly:
+   - Say something like "We have 3 available slots: February 10th at 3 PM, February 11th at 11 AM, and February 12th at 4 PM. Which works best for you?"
+   - Convert dates to spoken format (e.g., "February 10th" not "2026-02-10")
+4. If user mentions only a date without a time, ask them to pick a specific time from the available slots on that date.
+5. When booking, confirm all details: name, phone number, date, and time before finalizing.
+6. After any action, confirm what was done and ask if they need anything else.
+
+SPEAKING STYLE:
+- Be warm, professional, and concise
+- Use natural speech patterns ("Let me check that for you", "Perfect!", "Got it!")
+- Say dates and times in a human-friendly way ("February 10th at 3 PM" not "2026-02-10 15:00")
+- Never speak function names or function parameters aloud
+- If something goes wrong, apologize and offer alternatives
+
+IMPORTANT:
+- Always collect name AND phone number before booking
+- Never skip confirming the booking details
+- If a slot is taken, immediately suggest other available times
 """,
             tools=[
                 identify_user,
@@ -73,6 +90,8 @@ server.setup_fnc = prewarm
 
 @server.rtc_session()
 async def my_agent(ctx: JobContext):
+    # Connect to the room first - this is required!
+    
     if not DEEPGRAM_API_KEY or not CARTESIA_API_KEY:
         logger.error("API keys for Deepgram or Cartesia are missing.")
         return
@@ -94,7 +113,9 @@ async def my_agent(ctx: JobContext):
     await session.start(
         agent=Assistant(),
         room=ctx.room,
+        room_options=room_io.RoomOptions(),
     )
+    await ctx.connect()
 
 
 if __name__ == "__main__":
